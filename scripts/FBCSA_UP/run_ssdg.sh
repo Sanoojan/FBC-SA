@@ -25,7 +25,7 @@ elif [ ${DATASET} == ssdg_officehome ]; then
     D4=real_world
 fi
 
-TRAINER=FBCSA
+TRAINER=FBCSA_UP
 NET=resnet18
 
 for SEED in 1 2 3 4 5

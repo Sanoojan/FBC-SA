@@ -20,7 +20,7 @@ TRAIN:
   PRINT_FREQ: 10
 
 TRAINER:
-  FBCSA:
+  FBCSA_UP:
     STRONG_TRANSFORMS: ["random_flip", "randaugment_fixmatch", "normalize", "cutout"]
     C_OPTIM:
       NAME: "sgd"

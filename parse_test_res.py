@@ -67,7 +67,7 @@ def parse_function(*metrics, directory="", args=None, end_signal=None):
     subdirs = listdir_nohidden(directory, sort=True)
 
     outputs = []
-
+    # breakpoint()
     for subdir in subdirs:
         fpath = osp.join(directory, subdir, "log.txt")
         assert check_isfile(fpath)
@@ -94,7 +94,7 @@ def parse_function(*metrics, directory="", args=None, end_signal=None):
 
         if output:
             outputs.append(output)
-
+        # breakpoint()
     assert len(outputs) > 0, f"Nothing found in {directory}"
 
     metrics_results = defaultdict(list)

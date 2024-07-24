@@ -12,9 +12,15 @@ import copy
 # datasets
 import datasets.ssdg_pacs
 import datasets.ssdg_officehome
+import os
+import wandb
+import random
+
+wandb.login(key="fa0767adc156a87ed43a394680774f3116fc3ed2")
 
 # trainers
 import trainers.FBCSA
+import trainers.FBCSA_UP
 
 
 def print_args(args, cfg):
@@ -64,12 +70,19 @@ def reset_cfg(cfg, args):
 
 
 def extend_cfg(cfg):
-    cfg.TRAINER.FBASA = CN()
-    cfg.TRAINER.FBASA.CONF_THRE = 0.95  # confidence threshold
-    cfg.TRAINER.FBASA.STRONG_TRANSFORMS = ()  # strong augmentations
-    cfg.TRAINER.FBASA.C_OPTIM = copy.deepcopy(cfg.OPTIM)  # classifier's optim setting
-    cfg.TRAINER.FBASA.CLASSIFIER = "normal"  # stochastic or normal
-
+    # breakpoint()
+    cfg.TRAINER.FBCSA_UP = CN()
+    cfg.TRAINER.FBCSA_UP.CONF_THRE = 0.95  # confidence threshold
+    cfg.TRAINER.FBCSA_UP.STRONG_TRANSFORMS = ()  # strong augmentations
+    cfg.TRAINER.FBCSA_UP.C_OPTIM = copy.deepcopy(cfg.OPTIM)  # classifier's optim setting
+    cfg.TRAINER.FBCSA_UP.CLASSIFIER = "normal"  # stochastic or normal
+    # pass
+    cfg.TRAINER.FBCSA = CN()
+    cfg.TRAINER.FBCSA.CONF_THRE = 0.95  # confidence threshold
+    cfg.TRAINER.FBCSA.STRONG_TRANSFORMS = ()  # strong augmentations
+    cfg.TRAINER.FBCSA.C_OPTIM = copy.deepcopy(cfg.OPTIM)  # classifier's optim setting
+    cfg.TRAINER.FBCSA.CLASSIFIER = "normal"  # stochastic or normal
+    
 
 def setup_cfg(args):
     cfg = get_cfg_default()
@@ -80,6 +93,7 @@ def setup_cfg(args):
         cfg.merge_from_file(args.dataset_config_file)
 
     # 2. From the method config file
+    # breakpoint()
     if args.config_file:
         cfg.merge_from_file(args.config_file)
 
@@ -95,6 +109,21 @@ def setup_cfg(args):
 
 
 def main(args):
+    
+    save_location = args.output_dir
+    # check if log.txt exists
+    if os.path.exists(save_location + "/log.txt"):
+        read_file = open(save_location + "/log.txt", "r")
+        # check if the last line contains "elapsed"
+        lines = read_file.readlines()
+        if "Elapsed" in lines[-1]:
+            print("Skipping as already trained")
+            return   
+        else:
+            # delete the log file
+            os.remove(save_location + "/log.txt")
+    
+        
     cfg = setup_cfg(args)
     if cfg.SEED >= 0:
         print("Setting fixed seed: {}".format(cfg.SEED))
@@ -108,6 +137,17 @@ def main(args):
     print("Collecting env info ...")
     print("** System info **\n{}\n".format(collect_env_info()))
 
+    nowname=args.trainer + "_"+args.exp_name + args.dataset_config_file.split("/")[-1].split(".")[0] +"_seed_" +str(args.seed)+"_domain_"+args.target_domains[0]
+    wandb.init(
+    # set the wandb project where this run will be logged
+        project="FBCSA_extension",
+        name=nowname,
+        # track hyperparameters and run metadata
+        
+        config=cfg)
+    
+    
+    
     trainer = build_trainer(cfg)
 
     if args.eval_only:
@@ -117,6 +157,7 @@ def main(args):
 
     if not args.no_train:
         trainer.train()
+    wandb.finish()
 
 
 if __name__ == "__main__":
@@ -152,6 +193,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--trainer", type=str, default="", help="name of trainer")
     parser.add_argument("--backbone", type=str, default="", help="name of CNN backbone")
+    parser.add_argument("--exp-name", type=str, default="", help="name of CNN backbone")
     parser.add_argument("--head", type=str, default="", help="name of head")
     parser.add_argument("--eval-only", action="store_true", help="evaluation only")
     parser.add_argument(

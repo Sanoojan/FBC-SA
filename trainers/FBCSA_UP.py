@@ -68,16 +68,17 @@ class NormalClassifier(nn.Module):
 
 
 @TRAINER_REGISTRY.register()
-class FBCSA(TrainerXU):
+class FBCSA_UP(TrainerXU):
     """
     Towards Generalizing to Unseen Domains with Few Labels.
-    
+    -- Journal extension
+        try1: 
     """
 
     def __init__(self, cfg):
         super().__init__(cfg)
 
-        self.conf_thre = cfg.TRAINER.FBCSA.CONF_THRE
+        self.conf_thre = cfg.TRAINER.FBCSA_UP.CONF_THRE
 
         norm_mean = None
         norm_std = None
@@ -88,7 +89,7 @@ class FBCSA(TrainerXU):
 
 
     def check_cfg(self, cfg):
-        assert len(cfg.TRAINER.FBCSA.STRONG_TRANSFORMS) > 0
+        assert len(cfg.TRAINER.FBCSA_UP.STRONG_TRANSFORMS) > 0
         assert cfg.DATALOADER.TRAIN_X.SAMPLER == "SeqDomainSampler"
         assert cfg.DATALOADER.TRAIN_U.SAME_AS_X
 
@@ -96,7 +97,7 @@ class FBCSA(TrainerXU):
         cfg = self.cfg
         tfm_train = build_transform(cfg, is_train=True)
         custom_tfm_train = [tfm_train]
-        choices = cfg.TRAINER.FBCSA.STRONG_TRANSFORMS
+        choices = cfg.TRAINER.FBCSA_UP.STRONG_TRANSFORMS
         tfm_train_strong = build_transform(cfg, is_train=True, choices=choices)
         custom_tfm_train += [tfm_train_strong]
         dm = DataManager(self.cfg, custom_tfm_train=custom_tfm_train)
@@ -109,6 +110,7 @@ class FBCSA(TrainerXU):
         self.lab2cname = dm.lab2cname
 
     def build_model(self):
+        print("FBCSA_UP: Building model............................................")
         cfg = self.cfg
 
         print("Building G")
@@ -123,8 +125,8 @@ class FBCSA(TrainerXU):
         self.C = NormalClassifier(self.G.fdim, self.num_classes)
         self.C.to(self.device)
         print("# params: {:,}".format(count_num_param(self.C)))
-        self.optim_C = build_optimizer(self.C, cfg.TRAINER.FBCSA.C_OPTIM)
-        self.sched_C = build_lr_scheduler(self.optim_C, cfg.TRAINER.FBCSA.C_OPTIM)
+        self.optim_C = build_optimizer(self.C, cfg.TRAINER.FBCSA_UP.C_OPTIM)
+        self.sched_C = build_lr_scheduler(self.optim_C, cfg.TRAINER.FBCSA_UP.C_OPTIM)
         self.register_model("C", self.C, self.optim_C, self.sched_C)
 
     def assess_y_pred_quality(self, y_pred, y_true, mask):
@@ -157,7 +159,6 @@ class FBCSA(TrainerXU):
         ####################
         with torch.no_grad():
             p_xu = []
-            #### Confidence thresholding for classifier based pseudo labeling  ################
             for k in range(K):
                 x_k = x[k]
                 u_k = u[k]
@@ -167,35 +168,11 @@ class FBCSA(TrainerXU):
                 p_xu.append(p_xu_k)
             p_xu = torch.cat(p_xu, 0)
 
-
-            
             p_xu_maxval, y_xu_pred = p_xu.max(1)
             mask_xu = (p_xu_maxval >= self.conf_thre).float()
 
             y_xu_pred = y_xu_pred.chunk(K)
-            mask_xu = mask_xu.chunk(K)  ################
-            
-            # # Confidence thresholding for feature distance based pseudo labeling -- experimental ################################
-            
-            # for k in range(K):
-            #     x_k = x[k]
-            #     u_k = u[k]
-            #     xu_k = torch.cat([x_k, u_k], 0)
-                
-            #     z_xu_k = self.G(xu_k)       # [B,D]   self.feat[k] shape [C,D]
-            #     # find the cosine distance between the feature and the class centers outputs will be [B,C]
-            #     z_xu_k = torch.mm(F.normalize(z_xu_k, p=2., dim=1), self.feat[k].t())
-            #     p_xu_k = F.softmax(z_xu_k, 1)
-            #     p_xu.append(p_xu_k)
-            # p_xu = torch.cat(p_xu, 0)
-
-
-            
-            # p_xu_maxval, y_xu_pred = p_xu.max(1)
-            # mask_xu = (p_xu_maxval >= self.conf_thre).float()
-
-            # y_xu_pred = y_xu_pred.chunk(K)
-            # mask_xu = mask_xu.chunk(K)  ################
+            mask_xu = mask_xu.chunk(K)
 
             # Calculate pseudo-label's accuracy
             y_u_pred = []
@@ -226,6 +203,7 @@ class FBCSA(TrainerXU):
         loss_u_sty = 0
         loss_u_feat_clas = 0
         loss_u_sim = 0
+        loss_u_dom_align = 0
         for k in range(K):
             y_xu_k_pred = y_xu_pred[k]
             mask_xu_k = mask_xu[k]
@@ -272,6 +250,10 @@ class FBCSA(TrainerXU):
             loss_sim = 2 - sim_topk[:,0] - sim_topk_2[:,0] + sim_topk[:,1:n].mean(1)
             loss_sim = (loss_sim * mask_xu_k).mean()
             loss_u_sim += loss_sim * 0.5
+            
+            # Domain_matching loss
+            # kl divergence loss with temperature between the distribution of similarities of the current domain and the distribution of the similarities of the other domains
+            loss_u_dom_align+= F.kl_div(F.log_softmax(similarity_k2/3.0, dim=1), F.softmax(similarity/3.0, dim=1), reduction="batchmean") * 0.1
 
         loss_summary = {}
 
@@ -287,6 +269,9 @@ class FBCSA(TrainerXU):
     
         loss_all += loss_u_sim
         loss_summary["loss_SA"] = loss_u_sim.item()
+        
+        loss_all += loss_u_dom_align
+        loss_summary["loss_dom_align"] = loss_u_dom_align.item()
 
         self.model_backward_and_update(loss_all)
 
@@ -302,9 +287,12 @@ class FBCSA(TrainerXU):
 
     def before_epoch(self):
         train_loader_x_iter = iter(self.train_loader_x)
+        train_loader_u_iter = iter(self.train_loader_u)
+        
         total_x = []
         total_y = []
         total_d = []
+
         for self.batch_idx in range(len(self.train_loader_x)):
             batch_x = next(train_loader_x_iter)
 
@@ -315,13 +303,51 @@ class FBCSA(TrainerXU):
             total_x.append(input_x)
             total_y.append(label_x)
             total_d.append(domain_x)
+        
+        # Total_new_samples = 0
+        # Total_correct_samples = 0
+        # for unlabel_batch in range(len(self.train_loader_u)):
+        #     with torch.no_grad():
+        #         batch_u = next(train_loader_u_iter)
+        #         input_u = batch_u["img0"]
+
+        #         input_u = input_u.to(self.device)
+        #         predictions = self.model_inference(input_u)
+
+        #     predictions = F.softmax(predictions, 1).detach().cpu()
+        #     predictions_maxval, y_u_pred = predictions.max(1)
+
+        #     mask_xu = (predictions_maxval >= self.conf_thre).cpu()
+
+        #     label_u_original= batch_u["label"] # only for evaluation
+            
+        #     input_u = input_u.cpu()
+        #     input_u = input_u[mask_xu]
+            
+            
+        #     # label_u = y_u_pred[mask_xu]
+        #     label_u = label_u_original[mask_xu] # only for checking # comment this finally
+           
+        #     label_u_original = label_u_original[mask_xu] # only for evaluation
+        #     Total_new_samples += len(input_u)
+        #     Total_correct_samples += (label_u == label_u_original).sum()
+            
+            
+        #     domain_u = batch_u["domain"][mask_xu]
+
+        #     total_x.append(input_u)
+        #     total_y.append(label_u)
+        #     total_d.append(domain_u)
+            
+        #     # Clear intermediate variables
+        #     del input_u, predictions, predictions_maxval, y_u_pred, mask_xu, batch_u
+        #     torch.cuda.empty_cache()
 
         x = torch.cat(total_x, dim=0)
         y = torch.cat(total_y, dim=0)
         d = torch.cat(total_d, dim=0)
-        
+
         K = self.num_source_domains
-        # NOTE: If num_source_domains=1, we split a batch into two halves
         K = 2 if K == 1 else K
 
         global_feat = []
@@ -340,10 +366,16 @@ class FBCSA(TrainerXU):
                 f.append(z.mean(dim=0))
             feat = torch.stack(f)
             global_feat.append(feat)
-        try:
-            self.feat = (0.5* torch.cat(self.feat,dim=0) + 0.5*torch.cat(global_feat, dim=0)).chunk(K)
-        except:
-            self.feat = torch.cat(global_feat, dim=0).chunk(K)
+
+        self.feat = torch.cat(global_feat, dim=0).chunk(K)
+
+        # new_prototype_accuracy = Total_correct_samples/Total_new_samples
+        
+        # wandb.log({"new_prototype_accuracy": new_prototype_accuracy})
+        # wandb.log({"Total_new_samples": Total_new_samples})
+        
+        # Clear CUDA cache
+        torch.cuda.empty_cache()
 
     def parse_batch_train(self, batch_x, batch_u):
         x0 = batch_x["img0"]  # no augmentation
