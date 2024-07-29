@@ -22,6 +22,7 @@ wandb.login(key="fa0767adc156a87ed43a394680774f3116fc3ed2")
 import trainers.FBCSA
 import trainers.FBCSA_UP
 
+os.environ["WANDB_DISABLED"] = "true"
 
 def print_args(args, cfg):
     print("***************")
@@ -82,6 +83,24 @@ def extend_cfg(cfg):
     cfg.TRAINER.FBCSA.STRONG_TRANSFORMS = ()  # strong augmentations
     cfg.TRAINER.FBCSA.C_OPTIM = copy.deepcopy(cfg.OPTIM)  # classifier's optim setting
     cfg.TRAINER.FBCSA.CLASSIFIER = "normal"  # stochastic or normal
+    
+    cfg.TRAINER.FBCSA_dom_align = CN()
+    cfg.TRAINER.FBCSA_dom_align.CONF_THRE = 0.95  # confidence threshold
+    cfg.TRAINER.FBCSA_dom_align.STRONG_TRANSFORMS = ()  # strong augmentations
+    cfg.TRAINER.FBCSA_dom_align.C_OPTIM = copy.deepcopy(cfg.OPTIM)  # classifier's optim setting
+    cfg.TRAINER.FBCSA_dom_align.CLASSIFIER = "normal"  # stochastic or normal
+    
+    cfg.TRAINER.FBCSA_NO_CLASSIFIER = CN()
+    cfg.TRAINER.FBCSA_NO_CLASSIFIER.CONF_THRE = 0.95  # confidence threshold
+    cfg.TRAINER.FBCSA_NO_CLASSIFIER.STRONG_TRANSFORMS = ()  # strong augmentations
+    cfg.TRAINER.FBCSA_NO_CLASSIFIER.C_OPTIM = copy.deepcopy(cfg.OPTIM)  # classifier's optim setting
+    cfg.TRAINER.FBCSA_NO_CLASSIFIER.CLASSIFIER = "normal"  # stochastic or normal
+    
+    cfg.TRAINER.FIXMATCH = CN()
+    cfg.TRAINER.FIXMATCH.CONF_THRE = 0.95  # confidence threshold
+    cfg.TRAINER.FIXMATCH.STRONG_TRANSFORMS = ()  # strong augmentations
+    cfg.TRAINER.FIXMATCH.C_OPTIM = copy.deepcopy(cfg.OPTIM)  # classifier's optim setting
+    cfg.TRAINER.FIXMATCH.CLASSIFIER = "normal"  # stochastic or normal
     
 
 def setup_cfg(args):
