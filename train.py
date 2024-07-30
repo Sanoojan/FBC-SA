@@ -1,6 +1,7 @@
 import argparse
 import torch
-
+# import pydevd_pycharm
+# pydevd_pycharm.settrace('localhost', port=12345, stdoutToServer=True, stderrToServer=True)
 from dassl.utils import setup_logger, set_random_seed, collect_env_info
 from dassl.config import get_cfg_default
 from dassl.engine import build_trainer
@@ -101,9 +102,11 @@ def extend_cfg(cfg):
     cfg.TRAINER.FIXMATCH.STRONG_TRANSFORMS = ()  # strong augmentations
     cfg.TRAINER.FIXMATCH.C_OPTIM = copy.deepcopy(cfg.OPTIM)  # classifier's optim setting
     cfg.TRAINER.FIXMATCH.CLASSIFIER = "normal"  # stochastic or normal
+    # cfg.TRAINER.FIXMATCH.EXP.CONFIDENCE_WEIGHTAGE= False # confidence weightage
     
 
 def setup_cfg(args):
+    # breakpoint()
     cfg = get_cfg_default()
     extend_cfg(cfg)
 

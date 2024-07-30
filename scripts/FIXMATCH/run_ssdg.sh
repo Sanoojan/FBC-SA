@@ -6,10 +6,11 @@ DATA='data/data'
 
 
 DATASET=$1
-NLAB=$2 # total number of labels
-DEVICE=$3
+CONFIG=$2
+NLAB=$3 # total number of labels
+DEVICE=$4
 
-exp_name=$4
+exp_name=$5
 
 if [ ${DATASET} == ssdg_pacs ]; then
     # NLAB: 210 or 105
@@ -62,7 +63,7 @@ do
         --source-domains ${S1} ${S2} ${S3} \
         --target-domains ${T} \
         --dataset-config-file configs/datasets/${DATASET}.yaml \
-        --config-file configs/trainers/${TRAINER}/${DATASET}.yaml \
+        --config-file configs/trainers/${TRAINER}/${CONFIG}.yaml \
         --output-dir output/${DATASET}/nlab_${NLAB}/${TRAINER}_${exp_name}/${NET}/${T}/seed${SEED} \
         MODEL.BACKBONE.NAME ${NET} \
         DATASET.NUM_LABELED ${NLAB}

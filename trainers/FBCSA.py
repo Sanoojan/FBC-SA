@@ -109,6 +109,10 @@ class FIXMATCH(TrainerXU):
     def build_model(self):
         cfg = self.cfg
 
+        self.confidence_weightage=False
+        
+        
+        
         print("Building G")
         self.G = SimpleNet(cfg, cfg.MODEL, 0)  # n_class=0: only produce features
         self.G.to(self.device)
@@ -135,6 +139,7 @@ class FIXMATCH(TrainerXU):
 
     def forward_backward(self, batch_x, batch_u):
         parsed_batch = self.parse_batch_train(batch_x, batch_u)
+
 
         x0 = parsed_batch["x0"]
         x = parsed_batch["x"]
@@ -172,17 +177,20 @@ class FIXMATCH(TrainerXU):
 
             y_xu_pred = y_xu_pred.chunk(K)
             mask_xu = mask_xu.chunk(K)  ################
-            
+            p_xu_maxval=p_xu_maxval.chunk(K)
             
             y_u_pred = []
             mask_u = []
-            for y_xu_k_pred, mask_xu_k in zip(y_xu_pred, mask_xu):
+            conf_u=[]
+            for y_xu_k_pred, mask_xu_k,p_xu_k in zip(y_xu_pred, mask_xu,p_xu_maxval):
                 y_u_pred.append(
                     y_xu_k_pred.chunk(2)[1]
                 )  # only take the 2nd half (unlabeled data)
                 mask_u.append(mask_xu_k.chunk(2)[1])
+                conf_u.append(p_xu_k.chunk(2)[1])
             y_u_pred = torch.cat(y_u_pred, 0)
             mask_u = torch.cat(mask_u, 0)
+            conf_u = torch.cat(conf_u, 0)
             y_u_pred_stats = self.assess_y_pred_quality(y_u_pred, y_u_true, mask_u)
 
         ####################
@@ -205,6 +213,7 @@ class FIXMATCH(TrainerXU):
         for k in range(K):
             y_xu_k_pred = y_xu_pred[k]
             mask_xu_k = mask_xu[k]
+            p_xu_k = p_xu_maxval[k]
 
             # Compute loss for strongly augmented data
             x_k_aug = x_aug[k]
@@ -212,8 +221,12 @@ class FIXMATCH(TrainerXU):
             xu_k_aug = torch.cat([x_k_aug, u_k_aug], 0)
             f_xu_k_aug = self.G(xu_k_aug)
             z_xu_k_aug = self.C(f_xu_k_aug, stochastic=True)
-            loss = F.cross_entropy(z_xu_k_aug, y_xu_k_pred, reduction="none")
-            loss = (loss * mask_xu_k).mean()
+            if self.confidence_weightage:
+                loss = F.cross_entropy(z_xu_k_aug, y_xu_k_pred, reduction="none")
+                loss = (loss * mask_xu_k * p_xu_k).mean()
+            else:
+                loss = F.cross_entropy(z_xu_k_aug, y_xu_k_pred, reduction="none")
+                loss = (loss * mask_xu_k).mean()
             loss_u_aug += loss
 
 

@@ -19,6 +19,7 @@ from dassl.utils import count_num_param
 from .adain.adain import AdaIN
 import wandb
 
+
 @contextlib.contextmanager
 def freeze_models_params(models):
     try:
@@ -239,7 +240,7 @@ class FBCSA_UP(TrainerXU):
             loss2 = (loss2 * mask_xu_k).mean()
 
             loss_u_feat_clas += (loss1+loss2) * 0.1
-
+            
             # SA LOSS
             sim_topk, idx = similarity.topk(ceil(self.num_classes/2), dim=1, sorted = True)
             ids = idx[:,0].unsqueeze(-1)
@@ -253,7 +254,8 @@ class FBCSA_UP(TrainerXU):
             
             # Domain_matching loss
             # kl divergence loss with temperature between the distribution of similarities of the current domain and the distribution of the similarities of the other domains
-            loss_u_dom_align+= F.kl_div(F.log_softmax(similarity_k2/5.0, dim=1), F.softmax(similarity/5.0, dim=1), reduction="batchmean") 
+            loss_u_dom_align+= F.kl_div(F.log_softmax(similarity_k2/3.0, dim=1), F.softmax(similarity/3.0, dim=1), reduction="batchmean") # kl div loss
+
 
         loss_summary = {}
 
@@ -367,7 +369,10 @@ class FBCSA_UP(TrainerXU):
             feat = torch.stack(f)
             global_feat.append(feat)
 
-        self.feat = torch.cat(global_feat, dim=0).chunk(K)
+        try:
+            self.feat = (0.5* torch.cat(self.feat,dim=0) + 0.5*torch.cat(global_feat, dim=0)).chunk(K)
+        except:
+            self.feat = torch.cat(global_feat, dim=0).chunk(K)
 
         # new_prototype_accuracy = Total_correct_samples/Total_new_samples
         
@@ -571,7 +576,7 @@ class FBCSA_dom_align(FBCSA_UP):
             
             # Domain_matching loss
             # kl divergence loss with temperature between the distribution of similarities of the current domain and the distribution of the similarities of the other domains
-            # loss_u_dom_align+= F.kl_div(F.log_softmax(similarity_k2/3.0, dim=1), F.softmax(similarity/3.0, dim=1), reduction="batchmean") * 0.1
+            loss_u_dom_align+= F.kl_div(F.log_softmax(similarity_k2/3.0, dim=1), F.softmax(similarity/3.0, dim=1), reduction="batchmean")
 
         loss_summary = {}
 
