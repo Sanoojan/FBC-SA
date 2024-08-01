@@ -457,7 +457,7 @@ class FBCSA(TrainerXU):
         K = 2 if K == 1 else K
 
         ####################
-        # Generate pseudo labels & simillarity based labels
+        # Generate pseudo labels & similarity based labels
         ####################
         with torch.no_grad():
             p_xu = []

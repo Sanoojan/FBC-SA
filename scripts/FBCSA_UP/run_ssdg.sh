@@ -8,8 +8,9 @@ DATA='/share/data/drive_1/Sanoojan/data'
 DATASET=$1
 NLAB=$2 # total number of labels
 DEVICE=$3
-
 exp_name=$4
+exp_config=$5
+echo exp_config: ${exp_config}
 
 if [ ${DATASET} == ssdg_pacs ]; then
     # NLAB: 210 or 105
@@ -64,6 +65,7 @@ do
         --dataset-config-file configs/datasets/${DATASET}.yaml \
         --config-file configs/trainers/${TRAINER}/${DATASET}.yaml \
         --output-dir output/${DATASET}/nlab_${NLAB}/${TRAINER}_${exp_name}/${NET}/${T}/seed${SEED} \
+        --exp-config configs/trainers/${TRAINER}/${exp_config} \
         MODEL.BACKBONE.NAME ${NET} \
         DATASET.NUM_LABELED ${NLAB}
     done

@@ -1,0 +1,10 @@
+EXPERIMENT_NAME: "Exp1_update_prototype_with_confident_unlabeled_data"
+DOMAIN_ALIGNMENT_LOSS:
+  USE: False
+  Weight: 0.1
+  LossType: "KL"
+  Temperature: 1.0
+PROTOTYPE_UPDATE:
+  USE: True
+
+

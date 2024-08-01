@@ -156,6 +156,7 @@ def main(args):
         torch.backends.cudnn.benchmark = True
 
     print_args(args, cfg)
+
     print("Collecting env info ...")
     print("** System info **\n{}\n".format(collect_env_info()))
 
@@ -170,7 +171,7 @@ def main(args):
     
     
     
-    trainer = build_trainer(cfg)
+    trainer = build_trainer(cfg,exp_cfg=args.exp_config)
 
     if args.eval_only:
         trainer.load_model(args.model_dir, epoch=args.load_epoch)
@@ -235,6 +236,9 @@ if __name__ == "__main__":
         default=None,
         nargs=argparse.REMAINDER,
         help="modify config options using the command-line",
+    )
+    parser.add_argument(
+        "--exp-config", type=str, default="", help="path to config file for experiment setup"
     )
     args = parser.parse_args()
     main(args)

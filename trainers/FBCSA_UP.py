@@ -5,7 +5,7 @@ import time
 import datetime
 import numpy as np
 from math import ceil
-
+import yaml
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -76,7 +76,7 @@ class FBCSA_UP(TrainerXU):
         try1: 
     """
 
-    def __init__(self, cfg):
+    def __init__(self, cfg,expcfg=None):
         super().__init__(cfg)
 
         self.conf_thre = cfg.TRAINER.FBCSA_UP.CONF_THRE
@@ -87,6 +87,18 @@ class FBCSA_UP(TrainerXU):
         if "normalize" in cfg.INPUT.TRANSFORMS:
             norm_mean = cfg.INPUT.PIXEL_MEAN
             norm_std = cfg.INPUT.PIXEL_STD
+
+        # set experiment parameters and name from experiment config
+
+        # read yaml file
+        with open(expcfg, 'r') as file:
+            self.expcfg = yaml.safe_load(file)
+
+
+        self.EXPERIMENT_NAME = self.expcfg["EXPERIMENT_NAME"] if "EXPERIMENT_NAME" in self.expcfg else "FBCSA_UP"
+        self.DOMAIN_ALIGNMENT_LOSS= self.expcfg["DOMAIN_ALIGNMENT_LOSS"] if "DOMAIN_ALIGNMENT_LOSS" in self.expcfg else {"USE": False}
+        self.PROTOTYPE_MA= self.expcfg["PROTOTYPE_MA"] if "PROTOTYPE_MA" in self.expcfg else {"USE": False}
+        self.PROTOTYPE_UPDATE= self.expcfg["PROTOTYPE_UPDATE"] if "PROTOTYPE_UPDATE" in self.expcfg else {"USE": False}
 
 
     def check_cfg(self, cfg):
@@ -172,6 +184,7 @@ class FBCSA_UP(TrainerXU):
             p_xu_maxval, y_xu_pred = p_xu.max(1)
             mask_xu = (p_xu_maxval >= self.conf_thre).float()
 
+
             y_xu_pred = y_xu_pred.chunk(K)
             mask_xu = mask_xu.chunk(K)
 
@@ -251,10 +264,12 @@ class FBCSA_UP(TrainerXU):
             loss_sim = 2 - sim_topk[:,0] - sim_topk_2[:,0] + sim_topk[:,1:n].mean(1)
             loss_sim = (loss_sim * mask_xu_k).mean()
             loss_u_sim += loss_sim * 0.5
-            
-            # Domain_matching loss
-            # kl divergence loss with temperature between the distribution of similarities of the current domain and the distribution of the similarities of the other domains
-            loss_u_dom_align+= F.kl_div(F.log_softmax(similarity_k2/3.0, dim=1), F.softmax(similarity/3.0, dim=1), reduction="batchmean") # kl div loss
+
+            if self.DOMAIN_ALIGNMENT_LOSS["USE"]:
+                # Domain_matching loss
+                # kl divergence loss with temperature between the distribution of similarities of the current domain and the distribution of the similarities of the other domains
+                loss_u_dom_align+= F.kl_div(F.log_softmax(similarity_k2/3.0, dim=1), F.softmax(similarity/3.0, dim=1), reduction="batchmean")
+
 
 
         loss_summary = {}
@@ -271,9 +286,11 @@ class FBCSA_UP(TrainerXU):
     
         loss_all += loss_u_sim
         loss_summary["loss_SA"] = loss_u_sim.item()
-        
-        loss_all += loss_u_dom_align
-        loss_summary["loss_dom_align"] = loss_u_dom_align.item()
+
+        if self.DOMAIN_ALIGNMENT_LOSS["USE"]:
+            loss_all += loss_u_dom_align
+            loss_summary["loss_dom_align"] = loss_u_dom_align.item()
+
 
         self.model_backward_and_update(loss_all)
 
@@ -305,45 +322,94 @@ class FBCSA_UP(TrainerXU):
             total_x.append(input_x)
             total_y.append(label_x)
             total_d.append(domain_x)
-        
-        # Total_new_samples = 0
-        # Total_correct_samples = 0
-        # for unlabel_batch in range(len(self.train_loader_u)):
-        #     with torch.no_grad():
-        #         batch_u = next(train_loader_u_iter)
-        #         input_u = batch_u["img0"]
+        if self.PROTOTYPE_UPDATE["USE"]:
 
-        #         input_u = input_u.to(self.device)
-        #         predictions = self.model_inference(input_u)
+            Total_new_samples = 0
+            Total_correct_samples = 0
+            # try:
+            if self.epoch>0:
+                for unlabel_batch in range(len(self.train_loader_u)):
+                    # breakpoint()
+                    predictions = []
+                    pred_by_domain_prototype = []
+                    input_u_all=[]
+                    domain_u_all=[]
+                    label_u_original=[]
+                    with torch.no_grad():
+                        batch_u = next(train_loader_u_iter)
+                        domain_u = batch_u["domain"]
+                        input_u = batch_u["img0"]
+                        label_u = batch_u["label"]  # for evaluating pseudo labeling's accuracy only
+                        input_u = input_u.to(self.device)
+                        features = self.G(input_u)
+                        K= self.num_source_domains
+                        
+                        for k in range(K):
+                            idx_k= domain_u == k
+                            inp_k = input_u[idx_k]
+                            label_u_k = label_u[idx_k]
+                            domain_u_k = domain_u[idx_k]
+                            domain_u_all.append(domain_u_k)
+                            input_u_all.append(inp_k)
+                            label_u_original.append(label_u_k)
+                            feat_k = features[idx_k]
+                            z_img_k = F.normalize((feat_k), p=2., dim=1)
+                            sim= torch.mm(z_img_k, self.feat[k].t())
+                            pred_k = F.softmax(sim, 1)
+                            pred_by_domain_prototype.append(pred_k)
+                            predictions.append(self.C(feat_k, stochastic=False))
+                            # feat = self.feat[k]
+                            # x_k = x[k]
+                            # u_k = u[k]
+                            # xu_k = torch.cat([x_k, u_k], 0)
+                            # z_xu_k = F.normalize(self.G(xu_k), p=2., dim=1)
+                            # similarity = torch.mm(z_xu_k, feat.t())
 
-        #     predictions = F.softmax(predictions, 1).detach().cpu()
-        #     predictions_maxval, y_u_pred = predictions.max(1)
+                    input_u = torch.cat(input_u_all, dim=0)
+                    domain_u = torch.cat(domain_u_all, dim=0)
+                    label_u_original = torch.cat(label_u_original, dim=0)
+                    
+                    
+                    pred_by_domain_prototype= torch.cat(pred_by_domain_prototype, dim=0)
+                    pred_by_domain_prototype = F.softmax(pred_by_domain_prototype, 1).detach().cpu()
+                    predictions= torch.cat(predictions, dim=0)
+                    predictions = F.softmax(predictions, 1).detach().cpu()
 
-        #     mask_xu = (predictions_maxval >= self.conf_thre).cpu()
 
-        #     label_u_original= batch_u["label"] # only for evaluation
-            
-        #     input_u = input_u.cpu()
-        #     input_u = input_u[mask_xu]
-            
-            
-        #     # label_u = y_u_pred[mask_xu]
-        #     label_u = label_u_original[mask_xu] # only for checking # comment this finally
-           
-        #     label_u_original = label_u_original[mask_xu] # only for evaluation
-        #     Total_new_samples += len(input_u)
-        #     Total_correct_samples += (label_u == label_u_original).sum()
-            
-            
-        #     domain_u = batch_u["domain"][mask_xu]
 
-        #     total_x.append(input_u)
-        #     total_y.append(label_u)
-        #     total_d.append(domain_u)
-            
-        #     # Clear intermediate variables
-        #     del input_u, predictions, predictions_maxval, y_u_pred, mask_xu, batch_u
-        #     torch.cuda.empty_cache()
+                    predictions_maxval, y_u_pred = predictions.max(1)
+                    predictions_domain_maxval, y_u_pred_domain = pred_by_domain_prototype.max(1)
+
+                    mask_xu = ((predictions_maxval >= self.conf_thre) & (predictions_domain_maxval >= self.conf_thre)).cpu()
+                    mask_xu_by_label = (y_u_pred==y_u_pred_domain).cpu()
+
+                    mask_xu = mask_xu & mask_xu_by_label
+                    # breakpoint()
+                    label_u_original= label_u_original[mask_xu] # only for evaluation
+
+                    input_u = input_u.cpu()
+                    input_u = input_u[mask_xu]
+
+
+                    label_u = y_u_pred[mask_xu]
+                    # label_u = label_u_original[mask_xu] # only for checking # comment this finally
+
+                    # label_u_original = label_u_original[mask_xu] # only for evaluation
+                    Total_new_samples += len(input_u)
+                    Total_correct_samples += (label_u == label_u_original).sum()
+
+
+                    domain_u = batch_u["domain"][mask_xu]
+
+                    total_x.append(input_u)
+                    total_y.append(label_u)
+                    total_d.append(domain_u)
+
+                    # Clear intermediate variables
+                    del input_u, predictions, predictions_maxval, y_u_pred, mask_xu, batch_u
+                    torch.cuda.empty_cache()
+                # except:
+                #     print("Error in updating prototype")
 
         x = torch.cat(total_x, dim=0)
         y = torch.cat(total_y, dim=0)
@@ -368,12 +434,11 @@ class FBCSA_UP(TrainerXU):
                 f.append(z.mean(dim=0))
             feat = torch.stack(f)
             global_feat.append(feat)
-
-        try:
+        if self.PROTOTYPE_MA["USE"] and self.epoch>0:
             self.feat = (0.5* torch.cat(self.feat,dim=0) + 0.5*torch.cat(global_feat, dim=0)).chunk(K)
-        except:
+      
+        else:
             self.feat = torch.cat(global_feat, dim=0).chunk(K)
-
         # new_prototype_accuracy = Total_correct_samples/Total_new_samples
         
         # wandb.log({"new_prototype_accuracy": new_prototype_accuracy})
