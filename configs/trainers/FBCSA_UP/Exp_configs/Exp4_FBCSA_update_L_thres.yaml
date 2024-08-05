@@ -1,0 +1,17 @@
+EXPERIMENT_NAME: "Exp4_FBCSA_update_L_thres"
+DOMAIN_ALIGNMENT_LOSS:
+  USE: False
+  Weight: 0.1
+  LossType: "KL"
+  Temperature: 1.0
+PROTOTYPE_GEN:
+  USE: True
+  Prototype_metric: "cosine"
+PROTOTYPES:
+  USE: True
+  Prototype_metric: "cosine"
+  Proto_sim_thres: 0.25
+FBC_WEIGHTAGE: 0.1
+SA_WEIGHTAGE: 0.5
+
+

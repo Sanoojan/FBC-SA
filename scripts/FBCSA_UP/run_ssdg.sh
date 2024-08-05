@@ -2,7 +2,7 @@
 
 cd ../..
 
-DATA='/share/data/drive_1/Sanoojan/data'
+DATA='data/data'
 
 
 DATASET=$1
@@ -24,7 +24,26 @@ elif [ ${DATASET} == ssdg_officehome ]; then
     D2=clipart
     D3=product
     D4=real_world
+elif [ ${DATASET} == ssdg_digits ]; then
+    # NLAB: 200 or 400
+    D1=mnist
+    D2=mnist_m
+    D3=svhn
+    D4=syn
+elif [ ${DATASET} == ssdg_vlcs ]; then
+    # NLAB: 75 or 150 
+    D1=CALTECH
+    D2=LABELME
+    D3=PASCAL
+    D4=SUN
+elif [ ${DATASET} == ssdg_terra ]; then
+    # NLAB: 150 or  300
+    D1=location_38
+    D2=location_43
+    D3=location_46
+    D4=location_100
 fi
+
 
 TRAINER=FBCSA_UP
 NET=resnet18

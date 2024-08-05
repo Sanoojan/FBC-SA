@@ -102,6 +102,14 @@ class FBCSA_UP(TrainerXU):
         self.FBC_WEIGHTAGE= self.expcfg["FBC_WEIGHTAGE"] if "FBC_WEIGHTAGE" in self.expcfg else 1.0
         self.SA_WEIGHTAGE= self.expcfg["SA_WEIGHTAGE"] if "SA_WEIGHTAGE" in self.expcfg else 1.0
         self.PROTOTYPES= self.expcfg["PROTOTYPES"] if "PROTOTYPES" in self.expcfg else {"USE": False}
+        print("Experiment_name: ", self.EXPERIMENT_NAME)
+        print("Domain Alignment Loss: ", self.DOMAIN_ALIGNMENT_LOSS)
+        print("Prototype MA: ", self.PROTOTYPE_MA)
+        print("Prototype Update: ", self.PROTOTYPE_UPDATE)
+        print("FBC Weightage: ", self.FBC_WEIGHTAGE)
+        print("SA Weightage: ", self.SA_WEIGHTAGE)
+        print("Prototypes: ", self.PROTOTYPES)
+
 
     def check_cfg(self, cfg):
         assert len(cfg.TRAINER.FBCSA_UP.STRONG_TRANSFORMS) > 0
@@ -397,7 +405,7 @@ class FBCSA_UP(TrainerXU):
                     print("Max predictions domain maxval", max_predictions_domain_maxval)
                     #
 
-                    mask_xu = ((predictions_maxval >= self.conf_thre) & (predictions_domain_maxval >= self.conf_thre)).cpu()
+                    mask_xu = ((predictions_maxval >= self.conf_thre) & (predictions_domain_maxval >= self.PROTOTYPES["Proto_sim_thres"] )).cpu()
                     mask_xu_by_label = (y_u_pred==y_u_pred_domain).cpu()
 
                     mask_xu = mask_xu & mask_xu_by_label
