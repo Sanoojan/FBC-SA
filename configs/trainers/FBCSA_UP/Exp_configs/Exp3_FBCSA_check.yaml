@@ -6,10 +6,10 @@ DOMAIN_ALIGNMENT_LOSS:
   Temperature: 1.0
 PROTOTYPE_GEN:
   USE: True
-  Prototype_metric: "MSE"
+  Prototype_metric: "cosine"
 PROTOTYPES:
   USE: True
-  Prototype_metric: "euclidean"
+  Prototype_metric: "cosine"
 FBC_WEIGHTAGE: 0.1
 SA_WEIGHTAGE: 0.5
 

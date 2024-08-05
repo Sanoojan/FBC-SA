@@ -8,8 +8,9 @@ DATA='/share/data/drive_1/Sanoojan/data'
 DATASET=$1
 NLAB=$2 # total number of labels
 DEVICE=$3
-
 exp_name=$4
+exp_config=$5
+echo exp_config: ${exp_config}
 
 if [ ${DATASET} == ssdg_pacs ]; then
     # NLAB: 210 or 105
@@ -23,6 +24,24 @@ elif [ ${DATASET} == ssdg_officehome ]; then
     D2=clipart
     D3=product
     D4=real_world
+elif [ ${DATASET} == ssdg_digits ]; then
+    # NLAB: 200 or 400
+    D1=mnist
+    D2=mnist_m
+    D3=svhn
+    D4=syn
+elif [ ${DATASET} == ssdg_vlcs ]; then
+    # NLAB: 75 or 150 
+    D1=CALTECH
+    D2=LABELME
+    D3=PASCAL
+    D4=SUN
+elif [ ${DATASET} == ssdg_terra ]; then
+    # NLAB: 150 or  300
+    D1=location_38
+    D2=location_43
+    D3=location_46
+    D4=location_100
 fi
 
 TRAINER=FBCSA
@@ -63,7 +82,8 @@ do
         --target-domains ${T} \
         --dataset-config-file configs/datasets/${DATASET}.yaml \
         --config-file configs/trainers/${TRAINER}/${DATASET}.yaml \
-        --output-dir output/${DATASET}/nlab_${NLAB}/${TRAINER}_${exp_name}/${NET}/${T}/seed${SEED} \
+        --output-dir output/${TRAINER}_${exp_name}/${DATASET}/nlab_${NLAB}/${NET}/${T}/seed${SEED} \
+        --exp-config configs/trainers/${TRAINER}/${exp_config} \
         MODEL.BACKBONE.NAME ${NET} \
         DATASET.NUM_LABELED ${NLAB}
     done

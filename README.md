@@ -30,7 +30,7 @@ In this case, the code will run FBC-SA in four different setups (four target dom
 
 To show the results, simply do
 ```bash
-python parse_test_res.py output/ssdg_officehome/nlab_1950/FBCSA/resnet18 --multi-exp
+python parse_test_res.py output_2/ssdg_officehome/nlab_1950/FBCSA/resnet18 --multi-exp
 ```
 
 ### Citation

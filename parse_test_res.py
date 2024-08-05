@@ -6,7 +6,7 @@ Goal
 
 Usage
 ---
-Assume the output files are saved under output/my_experiment,
+Assume the output_2 files are saved under output_2/my_experiment,
 which contains results of different seeds, e.g.,
 
 my_experiment/
@@ -19,12 +19,12 @@ my_experiment/
 
 Run the following command from the root directory:
 
-$ python tools/parse_test_res.py output/my_experiment
+$ python tools/parse_test_res.py output_2/my_experiment
 
 Add --ci95 to the argument if you wanna get 95% confidence
 interval instead of standard deviation:
 
-$ python tools/parse_test_res.py output/my_experiment --ci95
+$ python tools/parse_test_res.py output_2/my_experiment --ci95
 
 If my_experiment/ has the following structure,
 
@@ -46,7 +46,7 @@ my_experiment/
 
 Run
 
-$ python tools/parse_test_res.py output/my_experiment --multi-exp
+$ python tools/parse_test_res.py output_2/my_experiment --multi-exp
 """
 import re
 import numpy as np

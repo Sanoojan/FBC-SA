@@ -13,6 +13,9 @@ import copy
 # datasets
 import datasets.ssdg_pacs
 import datasets.ssdg_officehome
+import datasets.ssdg_vlcs
+import datasets.ssdg_terra
+import datasets.ssdg_digits
 import os
 import wandb
 import random
@@ -23,7 +26,7 @@ wandb.login(key="fa0767adc156a87ed43a394680774f3116fc3ed2")
 import trainers.FBCSA
 import trainers.FBCSA_UP
 
-os.environ["WANDB_DISABLED"] = "true"
+# os.environ["WANDB_DISABLED"] = "true"
 
 def print_args(args, cfg):
     print("***************")
@@ -186,7 +189,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=str, default="", help="path to dataset")
-    parser.add_argument("--output-dir", type=str, default="", help="output directory")
+    parser.add_argument("--output-dir", type=str, default="", help="output_2 directory")
     parser.add_argument(
         "--resume",
         type=str,

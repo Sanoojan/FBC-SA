@@ -1,0 +1,12 @@
+EXPERIMENT_NAME: "Exp2_FBCSA_weightage_high"
+DOMAIN_ALIGNMENT_LOSS:
+  USE: False
+  Weight: 0.1
+  LossType: "KL"
+  Temperature: 1.0
+PROTOTYPE_UPDATE:
+  USE: True
+FBC_WEIGHTAGE: 0.1
+SA_WEIGHTAGE: 0.5
+
+

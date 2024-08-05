@@ -1,4 +1,4 @@
 
+bash run_ssdg.sh ssdg_terra 300 5 baseline Exp_configs/Exp3_FBCSA_check.yaml
+bash run_ssdg.sh ssdg_vlcs 150 5 baseline Exp_configs/Exp3_FBCSA_check.yaml
 
-bash run_ssdg.sh ssdg_officehome 1950 3 weighted_up_proto
-bash run_ssdg.sh ssdg_pacs 105 3 weighted_up_proto

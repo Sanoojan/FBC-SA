@@ -1,5 +1,7 @@
-output/*
+output_2/*
 **/*.pyc
 datasets/__pycache__/__init__.cpython-38.pyc
 wandb/*
 output_1/*
+output_2/*
+output/*

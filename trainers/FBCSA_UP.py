@@ -99,7 +99,9 @@ class FBCSA_UP(TrainerXU):
         self.DOMAIN_ALIGNMENT_LOSS= self.expcfg["DOMAIN_ALIGNMENT_LOSS"] if "DOMAIN_ALIGNMENT_LOSS" in self.expcfg else {"USE": False}
         self.PROTOTYPE_MA= self.expcfg["PROTOTYPE_MA"] if "PROTOTYPE_MA" in self.expcfg else {"USE": False}
         self.PROTOTYPE_UPDATE= self.expcfg["PROTOTYPE_UPDATE"] if "PROTOTYPE_UPDATE" in self.expcfg else {"USE": False}
-
+        self.FBC_WEIGHTAGE= self.expcfg["FBC_WEIGHTAGE"] if "FBC_WEIGHTAGE" in self.expcfg else 1.0
+        self.SA_WEIGHTAGE= self.expcfg["SA_WEIGHTAGE"] if "SA_WEIGHTAGE" in self.expcfg else 1.0
+        self.PROTOTYPES= self.expcfg["PROTOTYPES"] if "PROTOTYPES" in self.expcfg else {"USE": False}
 
     def check_cfg(self, cfg):
         assert len(cfg.TRAINER.FBCSA_UP.STRONG_TRANSFORMS) > 0
@@ -239,12 +241,20 @@ class FBCSA_UP(TrainerXU):
             u_k = u[k]
             xu_k = torch.cat([x_k, u_k], 0)
             z_xu_k = F.normalize(self.G(xu_k), p=2. ,dim=1)
-            similarity = torch.mm(z_xu_k, feat.t())
+            if self.PROTOTYPES["Prototype_metric"]=="cosine":
+                similarity = torch.mm(z_xu_k, feat.t())
+            elif self.PROTOTYPES["Prototype_metric"]=="euclidean":
+                similarity = torch.cdist(z_xu_k, feat, p=2)
+
 
             other_domains = [i for i in range(K) if i != k]
             k2 = random.choice(other_domains)
             feat_k2 = self.feat[k2]
-            similarity_k2 = torch.mm(z_xu_k, feat_k2.t())
+            if self.PROTOTYPES["Prototype_metric"]=="cosine":
+                similarity_k2 = torch.mm(z_xu_k, feat_k2.t())
+            elif self.PROTOTYPES["Prototype_metric"]=="euclidean":
+                similarity_k2 = torch.cdist(z_xu_k, feat_k2, p=2)
+            #
 
             loss1 = F.cross_entropy(similarity, y_xu_k_pred, reduction="none")
             loss1 = (loss1 * mask_xu_k).mean()
@@ -252,7 +262,7 @@ class FBCSA_UP(TrainerXU):
             loss2 = F.cross_entropy(similarity_k2, y_xu_k_pred, reduction="none")
             loss2 = (loss2 * mask_xu_k).mean()
 
-            loss_u_feat_clas += (loss1+loss2) * 0.1
+            loss_u_feat_clas += (loss1+loss2) * self.FBC_WEIGHTAGE
             
             # SA LOSS
             sim_topk, idx = similarity.topk(ceil(self.num_classes/2), dim=1, sorted = True)
@@ -263,7 +273,7 @@ class FBCSA_UP(TrainerXU):
             n = random.choice(second_best)
             loss_sim = 2 - sim_topk[:,0] - sim_topk_2[:,0] + sim_topk[:,1:n].mean(1)
             loss_sim = (loss_sim * mask_xu_k).mean()
-            loss_u_sim += loss_sim * 0.5
+            loss_u_sim += loss_sim * self.SA_WEIGHTAGE
 
             if self.DOMAIN_ALIGNMENT_LOSS["USE"]:
                 # Domain_matching loss
@@ -311,7 +321,8 @@ class FBCSA_UP(TrainerXU):
         total_x = []
         total_y = []
         total_d = []
-
+        Total_new_samples = 0
+        Total_correct_samples = 0
         for self.batch_idx in range(len(self.train_loader_x)):
             batch_x = next(train_loader_x_iter)
 
@@ -324,8 +335,6 @@ class FBCSA_UP(TrainerXU):
             total_d.append(domain_x)
         if self.PROTOTYPE_UPDATE["USE"]:
 
-            Total_new_samples = 0
-            Total_correct_samples = 0
             # try:
             if self.epoch>0:
                 for unlabel_batch in range(len(self.train_loader_u)):
@@ -345,6 +354,7 @@ class FBCSA_UP(TrainerXU):
                         K= self.num_source_domains
                         
                         for k in range(K):
+                            # breakpoint()
                             idx_k= domain_u == k
                             inp_k = input_u[idx_k]
                             label_u_k = label_u[idx_k]
@@ -354,8 +364,11 @@ class FBCSA_UP(TrainerXU):
                             label_u_original.append(label_u_k)
                             feat_k = features[idx_k]
                             z_img_k = F.normalize((feat_k), p=2., dim=1)
-                            sim= torch.mm(z_img_k, self.feat[k].t())
-                            pred_k = F.softmax(sim, 1)
+                            if self.PROTOTYPES["Prototype_metric"] == "cosine":
+                                pred_k = torch.mm(z_img_k, self.feat[k].t())
+                            elif self.PROTOTYPES["Prototype_metric"] == "euclidean":
+                                pred_k = torch.cdist(z_img_k, self.feat[k], p=2)
+                            # pred_k = F.softmax(sim, 1)
                             pred_by_domain_prototype.append(pred_k)
                             predictions.append(self.C(feat_k, stochastic=False))
                             # feat = self.feat[k]
@@ -372,6 +385,7 @@ class FBCSA_UP(TrainerXU):
                     
                     pred_by_domain_prototype= torch.cat(pred_by_domain_prototype, dim=0)
                     pred_by_domain_prototype = F.softmax(pred_by_domain_prototype, 1).detach().cpu()
+                    
                     predictions= torch.cat(predictions, dim=0)
                     predictions = F.softmax(predictions, 1).detach().cpu()
 
@@ -379,6 +393,9 @@ class FBCSA_UP(TrainerXU):
 
                     predictions_maxval, y_u_pred = predictions.max(1)
                     predictions_domain_maxval, y_u_pred_domain = pred_by_domain_prototype.max(1)
+                    max_predictions_domain_maxval = pred_by_domain_prototype.max(1)[0]
+                    print("Max predictions domain maxval", max_predictions_domain_maxval)
+                    #
 
                     mask_xu = ((predictions_maxval >= self.conf_thre) & (predictions_domain_maxval >= self.conf_thre)).cpu()
                     mask_xu_by_label = (y_u_pred==y_u_pred_domain).cpu()
@@ -439,10 +456,13 @@ class FBCSA_UP(TrainerXU):
       
         else:
             self.feat = torch.cat(global_feat, dim=0).chunk(K)
-        # new_prototype_accuracy = Total_correct_samples/Total_new_samples
+        if Total_new_samples>0:
+            new_prototype_accuracy = Total_correct_samples/Total_new_samples
+        else:
+            new_prototype_accuracy = 0
         
-        # wandb.log({"new_prototype_accuracy": new_prototype_accuracy})
-        # wandb.log({"Total_new_samples": Total_new_samples})
+        wandb.log({"new_prototype_accuracy": new_prototype_accuracy})
+        wandb.log({"Total_new_samples": Total_new_samples})
         
         # Clear CUDA cache
         torch.cuda.empty_cache()
@@ -520,156 +540,3 @@ class FBCSA_UP(TrainerXU):
         # Close writer
         self.close_writer()
         
-@TRAINER_REGISTRY.register()
-class FBCSA_dom_align(FBCSA_UP):
-    def forward_backward(self, batch_x, batch_u):
-        parsed_batch = self.parse_batch_train(batch_x, batch_u)
-
-        x0 = parsed_batch["x0"]
-        x = parsed_batch["x"]
-        x_aug = parsed_batch["x_aug"]
-        y_x_true = parsed_batch["y_x_true"]
-
-        u0 = parsed_batch["u0"]
-        u = parsed_batch["u"]
-        u_aug = parsed_batch["u_aug"]
-        y_u_true = parsed_batch["y_u_true"]  # tensor
-
-        K = self.num_source_domains
-        # NOTE: If num_source_domains=1, we split a batch into two halves
-        K = 2 if K == 1 else K
-
-        ####################
-        # Generate pseudo labels & simillarity based labels
-        ####################
-        with torch.no_grad():
-            p_xu = []
-            for k in range(K):
-                x_k = x[k]
-                u_k = u[k]
-                xu_k = torch.cat([x_k, u_k], 0)
-                z_xu_k = self.C(self.G(xu_k), stochastic=False)
-                p_xu_k = F.softmax(z_xu_k, 1)
-                p_xu.append(p_xu_k)
-            p_xu = torch.cat(p_xu, 0)
-
-            p_xu_maxval, y_xu_pred = p_xu.max(1)
-            mask_xu = (p_xu_maxval >= self.conf_thre).float()
-
-            y_xu_pred = y_xu_pred.chunk(K)
-            mask_xu = mask_xu.chunk(K)
-
-            # Calculate pseudo-label's accuracy
-            y_u_pred = []
-            mask_u = []
-            for y_xu_k_pred, mask_xu_k in zip(y_xu_pred, mask_xu):
-                y_u_pred.append(
-                    y_xu_k_pred.chunk(2)[1]
-                )  # only take the 2nd half (unlabeled data)
-                mask_u.append(mask_xu_k.chunk(2)[1])
-            y_u_pred = torch.cat(y_u_pred, 0)
-            mask_u = torch.cat(mask_u, 0)
-            y_u_pred_stats = self.assess_y_pred_quality(y_u_pred, y_u_true, mask_u)
-
-        ####################
-        # Supervised loss
-        ####################
-        loss_x = 0
-        for k in range(K):
-            x_k = x[k]
-            y_x_k_true = y_x_true[k]
-            z_x_k = self.C(self.G(x_k), stochastic=True)
-            loss_x += F.cross_entropy(z_x_k, y_x_k_true)
-
-        ####################
-        # Unsupervised loss
-        ####################
-        loss_u_aug = 0
-        loss_u_sty = 0
-        loss_u_feat_clas = 0
-        loss_u_sim = 0
-        loss_u_dom_align = 0
-        for k in range(K):
-            y_xu_k_pred = y_xu_pred[k]
-            mask_xu_k = mask_xu[k]
-
-            # Compute loss for strongly augmented data
-            x_k_aug = x_aug[k]
-            u_k_aug = u_aug[k]
-            xu_k_aug = torch.cat([x_k_aug, u_k_aug], 0)
-            f_xu_k_aug = self.G(xu_k_aug)
-            z_xu_k_aug = self.C(f_xu_k_aug, stochastic=True)
-            loss = F.cross_entropy(z_xu_k_aug, y_xu_k_pred, reduction="none")
-            loss = (loss * mask_xu_k).mean()
-            loss_u_aug += loss
-
-
-            # FBC Loss
-            feat = self.feat[k]
-            x_k = x[k]
-            u_k = u[k]
-            xu_k = torch.cat([x_k, u_k], 0)
-            z_xu_k = F.normalize(self.G(xu_k), p=2. ,dim=1)
-            similarity = torch.mm(z_xu_k, feat.t())
-
-            other_domains = [i for i in range(K) if i != k]
-            k2 = random.choice(other_domains)
-            feat_k2 = self.feat[k2]
-            similarity_k2 = torch.mm(z_xu_k, feat_k2.t())
-
-            loss1 = F.cross_entropy(similarity, y_xu_k_pred, reduction="none")
-            loss1 = (loss1 * mask_xu_k).mean()
-
-            loss2 = F.cross_entropy(similarity_k2, y_xu_k_pred, reduction="none")
-            loss2 = (loss2 * mask_xu_k).mean()
-
-            loss_u_feat_clas += (loss1+loss2) * 0.1
-
-            # SA LOSS
-            sim_topk, idx = similarity.topk(ceil(self.num_classes/2), dim=1, sorted = True)
-            ids = idx[:,0].unsqueeze(-1)
-            sim_topk_2 = torch.gather(similarity_k2, 1, ids)
-
-            second_best = [i for i in range(2,ceil(self.num_classes/2))]
-            n = random.choice(second_best)
-            loss_sim = 2 - sim_topk[:,0] - sim_topk_2[:,0] + sim_topk[:,1:n].mean(1)
-            loss_sim = (loss_sim * mask_xu_k).mean()
-            loss_u_sim += loss_sim * 0.5
-            
-            # loss_u_dom_align is making the sim_topk and sim_topk_2 similar with mse loss
-            
-            
-            # Domain_matching loss
-            # kl divergence loss with temperature between the distribution of similarities of the current domain and the distribution of the similarities of the other domains
-            loss_u_dom_align+= F.kl_div(F.log_softmax(similarity_k2/3.0, dim=1), F.softmax(similarity/3.0, dim=1), reduction="batchmean")
-
-        loss_summary = {}
-
-        loss_all = 0
-        loss_all += loss_x
-        loss_summary["loss_x"] = loss_x.item()
-
-        loss_all += loss_u_aug
-        loss_summary["loss_u_aug"] = loss_u_aug.item()
-
-        loss_all += loss_u_feat_clas
-        loss_summary["loss_u_FBC"] = loss_u_feat_clas.item()
-    
-        loss_all += loss_u_sim
-        loss_summary["loss_SA"] = loss_u_sim.item()
-        
-        loss_all += loss_u_dom_align
-        loss_summary["loss_dom_align"] = loss_u_dom_align.item()
-
-        self.model_backward_and_update(loss_all)
-
-        loss_summary["y_u_pred_acc_thre"] = y_u_pred_stats["acc_thre"]
-        loss_summary["y_u_pred_acc_raw"] = y_u_pred_stats["acc_raw"]
-        loss_summary["y_u_pred_keep_rate"] = y_u_pred_stats["keep_rate"]
-        wandb.log(loss_summary)
-
-        if (self.batch_idx + 1) == self.num_batches:
-            self.update_lr()
-
-        return loss_summary
-
